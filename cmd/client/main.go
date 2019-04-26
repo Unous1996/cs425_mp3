@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"os"
@@ -14,6 +15,10 @@ var (
 
 var (
 	workingChan chan bool
+)
+
+var (
+	coordinatorConnection *net.TCPConn
 )
 
 func checkErr(err error) int {
@@ -32,7 +37,8 @@ func readMessage(conn *net.TCPConn){
 	for {
 		j, err := conn.Read(buff)
 		flag := checkErr(err)
-		if flag == 0 {
+		if flag == 0 && conn.RemoteAddr().String() == coordinatorAddresses + ":" + coordinatorPort {
+			fmt.Println("coordinator Failed, closing the client")
 			workingChan <- true
 			break
 		}
@@ -60,9 +66,11 @@ func main(){
 
 	coordinatorHost := coordinatorAddresses + coordinatorPort
 	initialize()
+
 	for{
 		tcpAdd, _ := net.ResolveTCPAddr("tcp", coordinatorHost)
-		coordinatorConnection, err := net.DialTCP("tcp", nil, tcpAdd)
+		var err error
+		coordinatorConnection, err = net.DialTCP("tcp", nil, tcpAdd)
 		if err != nil {
 			fmt.Println("#Failed to connect to the coordinator")
 			continue
@@ -70,7 +78,12 @@ func main(){
 
 		defer coordinatorConnection.Close()
 		go readMessage(coordinatorConnection)
-		break;
+	}
+
+	for {
+		in := bufio.NewReader(os.Stdin)
+		msg, _, _ := in.ReadLine()
+		coordinatorConnection.Write([]byte(msg))
 	}
 
 	<-workingChan

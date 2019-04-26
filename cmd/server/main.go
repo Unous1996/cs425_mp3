@@ -47,7 +47,8 @@ func readMessage(conn *net.TCPConn){
 	for {
 		j, err := conn.Read(buff)
 		flag := checkErr(err)
-		if flag == 0 {
+		if flag == 0 && conn.RemoteAddr().String() == coordinatorAddresses + ":" + coordinatorPort {
+			fmt.Println("Coordinator has failed")
 			workingChan <- true
 			break
 		}
@@ -61,7 +62,7 @@ func readMessage(conn *net.TCPConn){
 				continue
 			}
 
-			if(line_split[0] == "GET") {
+			if(line_split[0] == "GET"){
 				object := strings.Split(line_split[1],".")[1]
 				_, ok := balance[object]
 				var replyGet string
@@ -115,6 +116,7 @@ func main(){
 	coordinatorHost := coordinatorAddresses + coordinatorPort
 
 	addrs, err := net.InterfaceAddrs()
+
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
