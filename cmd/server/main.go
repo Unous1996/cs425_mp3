@@ -147,7 +147,7 @@ func main(){
 
 		defer coordinatorConnection.Close()
 		go readMessage(coordinatorConnection)
-		break;
+		break
 	}
 
 	<-workingChan
