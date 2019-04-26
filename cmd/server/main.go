@@ -112,7 +112,8 @@ func main(){
 		os.Exit(1)
 	}
 
-	coordinatorHost := coordinatorAddresses + coordinatorPort
+	coordinatorHost := coordinatorAddresses + ":" + coordinatorPort
+	portNum = os.Args[1]
 
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
