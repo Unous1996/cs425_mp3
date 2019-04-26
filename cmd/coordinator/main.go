@@ -10,7 +10,7 @@ import (
 var (
 	serverName = []string{"A", "B", "C", "D", "E"}
 	serverPorts = []string{"7001", "7002", "7003", "7004", "7005"}
-	serverIpAddr = "10.192.74.146"
+	serverIpAddr = "172.22.156.54"
 )
 
 var (

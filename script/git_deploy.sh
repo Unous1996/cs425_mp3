@@ -27,13 +27,13 @@ then
 if sshpass -p ${password} ssh -t -o "StrictHostKeyChecking no" ${netid}@sp19-cs425-g16-0${i}.cs.illinois.edu "test -d ${git_repo}"
 then
 
-sshpass -p ${password} ssh -t -o "StrictHostKeyChecking no" ${netid}@sp19-cs425-g16-0${i}.cs.illinois.edu "cd /home/${netid}/mp3; git init; git checkout . ;git pull https://github.com/Unous1996/cs425_mp3.git"
+sshpass -p ${password} ssh -t -o "StrictHostKeyChecking no" ${netid}@sp19-cs425-g16-0${i}.cs.illinois.edu "cd /home/${netid}/mp3; git checkout . ;git pull https://github.com/Unous1996/cs425_mp3.git"
 
 echo ""
 
 else
 
-sshpass -p ${password} ssh -t -o "StrictHostKeyChecking no" ${netid}@sp19-cs425-g16-0${i}.cs.illinois.edu "cd /home/${netid}/mp3; git init; git checkout . ;git pull https://github.com/Unous1996/cs425_mp3.git"
+sshpass -p ${password} ssh -t -o "StrictHostKeyChecking no" ${netid}@sp19-cs425-g16-0${i}.cs.illinois.edu "cd /home/${netid}/mp3; git checkout . ;git pull https://github.com/Unous1996/cs425_mp3.git"
 
 echo ""
 
@@ -47,13 +47,13 @@ if sshpass -p ${password} ssh -t -o "StrictHostKeyChecking no" ${netid}@sp19-cs4
 
 then
 
-sshpass -p ${password} ssh -t -o "StrictHostKeyChecking no" ${netid}@sp19-cs425-g16-${i}.cs.illinois.edu "cd /home/${netid}/mp3; git init;git checkout . ;git pull https://github.com/Unous1996/cs425_mp3.git"
+sshpass -p ${password} ssh -t -o "StrictHostKeyChecking no" ${netid}@sp19-cs425-g16-${i}.cs.illinois.edu "cd /home/${netid}/mp3; git checkout . ;git pull https://github.com/Unous1996/cs425_mp3.git"
 
 echo ""
 
 else
 
-sshpass -p ${password} ssh -t -o "StrictHostKeyChecking no" ${netid}@sp19-cs425-g16-${i}.cs.illinois.edu "cd /home/${netid}/mp3; git init;git checkout . ;git pull https://github.com/Unous1996/cs425_mp3.git"
+sshpass -p ${password} ssh -t -o "StrictHostKeyChecking no" ${netid}@sp19-cs425-g16-${i}.cs.illinois.edu "cd /home/${netid}/mp3; git checkout . ;git pull https://github.com/Unous1996/cs425_mp3.git"
 
 echo ""
 
