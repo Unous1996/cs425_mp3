@@ -1,0 +1,4 @@
+.idea/
+cmd/client/client
+cmd/coordinator/coordinator
+cmd/server/server
