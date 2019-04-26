@@ -33,6 +33,7 @@ func readMessage(conn *net.TCPConn){
 		j, err := conn.Read(buff)
 		flag := checkErr(err)
 		if flag == 0 {
+			workingChan <- true
 			break
 		}
 
@@ -69,8 +70,9 @@ func main(){
 
 		defer coordinatorConnection.Close()
 		go readMessage(coordinatorConnection)
+		break;
 	}
 
-	fmt.Println("Client Closed")
 	<-workingChan
+	fmt.Println("Client Closed")
 }
