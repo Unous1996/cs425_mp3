@@ -14,10 +14,17 @@ var (
 
 var (
 	workingChan chan bool
+
 )
 
 var (
 	balance map[string]string
+)
+
+var (
+	localIpAddress string
+	localHost string
+	portNum string
 )
 
 var (
@@ -68,6 +75,23 @@ func readMessage(conn *net.TCPConn){
 	}
 }
 
+func startServer() {
+	tcpAddr, _ := net.ResolveTCPAddr("tcp", localHost)
+	tcpListen, err := net.ListenTCP("tcp", tcpAddr)
+
+	if err != nil {
+		fmt.Println("#Failed to listen on " + portNum)
+	}
+
+	fmt.Println("#Start listening on " + portNum)
+	// Accept Tcp connection from other VMs
+
+	conn, _ := tcpListen.AcceptTCP()
+	defer conn.Close()
+	coordinatorConnection = conn
+	go readMessage(conn)
+}
+
 func chanInit(){
 	workingChan = make(chan bool)
 }
@@ -88,7 +112,29 @@ func main(){
 	}
 
 	coordinatorHost := coordinatorAddresses + coordinatorPort
+
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+
+	for _, address := range addrs {
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				localIpAddress = ipnet.IP.String()
+				fmt.Println("#The local ip address is:", ipnet.IP.String())
+			}
+		}
+	}
+
+	localHost = localIpAddress + ":" + portNum
+
 	initialize()
+
+	go startServer()
+
 	for{
 		tcpAdd, _ := net.ResolveTCPAddr("tcp", coordinatorHost)
 		var err error
