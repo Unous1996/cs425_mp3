@@ -161,7 +161,6 @@ func handleTransaction(conn net.Conn)  {
 
 				server := strings.Split(line_split[1],".")[0]
 
-
 				for {
 					lock := lockMap[line_split[1]]
 					if lock != 0 {
