@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 )
 
 var (
@@ -19,6 +20,7 @@ var (
 
 var (
 	balance map[string]string
+	balanceMutex = sync.RWMutex{}
 )
 
 var (
@@ -62,18 +64,24 @@ func readMessage(conn *net.TCPConn){
 
 		if(line_split[0] == "SET"){
 			object := strings.Split(line_split[1],".")[1]
+			balanceMutex.Lock()
 			balance[object] = line_split[2]
+			balanceMutex.Unlock()
 			continue
 		}
 
 		if(line_split[0] == "GET"){
 			object := strings.Split(line_split[1],".")[1]
+			balanceMutex.RLock()
 			_, ok := balance[object]
+			balanceMutex.RUnlock()
 			var replyGet string
 			if !ok {
 				replyGet = "NO"
 			} else {
+				balanceMutex.RLock()
 				replyGet = balance[object]
+				balanceMutex.RUnlock()
 			}
 			conn.Write([]byte(replyGet))
 		}
