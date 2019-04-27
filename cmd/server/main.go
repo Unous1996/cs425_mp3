@@ -63,6 +63,7 @@ func readMessage(conn *net.TCPConn){
 			}
 
 			if(line_split[0] == "GET"){
+				fmt.Printf("PortNum %s received a GET\n", portNum)
 				object := strings.Split(line_split[1],".")[1]
 				_, ok := balance[object]
 				var replyGet string

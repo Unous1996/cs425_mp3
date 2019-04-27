@@ -127,7 +127,6 @@ func handleTransaction(conn net.Conn)  {
 			line := string(buff[0:j])
 			line_split := strings.Split(line, " ")
 			server := strings.Split(line_split[1],".")[0]
-			object := strings.Split(line_split[1],".")[1]
 
 			if line_split[0] == "ABORT" {
 				conn.Write([]byte("ABORTED"))
@@ -145,13 +144,14 @@ func handleTransaction(conn net.Conn)  {
 			}
 
 			if line_split[0] == "SET" {
+				fmt.Println("SET observed")
 				updateMap[line_split[1]] = line_split[2]
 				logMap[server] = line
 				conn.Write([]byte("OK"))
 			}
 
 			if line_split[0] == "GET" {
-				v, ok := updateMap[object]
+				v, ok := updateMap[line_split[1]]
 				if ok {
 					msg := line_split[1] + " = " + v
 					conn.Write([]byte(msg))

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strings"
 )
 
 var (
@@ -43,10 +42,7 @@ func readMessage(conn *net.TCPConn){
 			break
 		}
 
-		receviedStringSpilt := strings.Split(string(buff[0:j]), "\n");
-		for line := range receviedStringSpilt {
-			fmt.Println(line)
-		}
+		fmt.Println(string(buff[0:j]))
 	}
 }
 
