@@ -112,8 +112,7 @@ func main(){
 		fmt.Println("Incorrect number of parameters")
 		os.Exit(1)
 	}
-
-	coordinatorHost := coordinatorAddresses + ":" + coordinatorPort
+	
 	portNum = os.Args[1]
 
 	addrs, err := net.InterfaceAddrs()
@@ -138,20 +137,6 @@ func main(){
 	initialize()
 
 	go startServer()
-
-	for{
-		tcpAdd, _ := net.ResolveTCPAddr("tcp", coordinatorHost)
-		var err error
-		coordinatorConnection, err = net.DialTCP("tcp", nil, tcpAdd)
-		if err != nil {
-			fmt.Println("#Failed to connect to the coordinator")
-			continue
-		}
-
-		defer coordinatorConnection.Close()
-		go readMessage(coordinatorConnection)
-		break
-	}
 
 	<-workingChan
 	fmt.Println("Server Closed")
