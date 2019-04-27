@@ -192,6 +192,8 @@ func main(){
 		os.Exit(1)
 	}
 
+	portNum = os.Args[1]
+
 	fmt.Println("#This is the coordinator code")
 
 	addrs, err := net.InterfaceAddrs()

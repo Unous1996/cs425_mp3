@@ -59,14 +59,9 @@ func initialize(){
 }
 
 func main(){
-	if len(os.Args) != 2 {
-		fmt.Println("Incorrect number of parameters")
-		os.Exit(1)
-	}
-
-	coordinatorHost := coordinatorAddresses + coordinatorPort
+	coordinatorHost := coordinatorAddresses + ":" + coordinatorPort
 	initialize()
-
+	fmt.Println("coordinatorHost = ", coordinatorHost)
 	for{
 		tcpAdd, _ := net.ResolveTCPAddr("tcp", coordinatorHost)
 		var err error
@@ -78,6 +73,7 @@ func main(){
 
 		defer coordinatorConnection.Close()
 		go readMessage(coordinatorConnection)
+		break
 	}
 
 	for {
