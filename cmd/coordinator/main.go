@@ -102,11 +102,8 @@ func handleTransaction(conn net.Conn)  {
 
 	buff := make([]byte, 10000)
 	endChan := make(chan bool)
-	count := 0
 
 	for {
-
-		transId := conn.RemoteAddr().String() + "-" + string(count)
 
 		for {
 
@@ -119,7 +116,7 @@ func handleTransaction(conn net.Conn)  {
 			msg := string(buff[0:j])
 
 			if msg == "BEGIN" {
-				fmt.Printf("#Start a transaction, transactionID: %s.", transId)
+				fmt.Println("#Start a transaction.")
 				break;
 			}
 
@@ -206,6 +203,10 @@ func handleTransaction(conn net.Conn)  {
 				for {
 
 					lockMapMutex.RLock()
+					_, ok := lockMap[line_split[1]]
+					if !ok {
+						lockMap[line_split[1]] = map[int]int{}
+					}
 					WLock := lockMap[line_split[1]][2]
 					RLock := lockMap[line_split[1]][1]
 					lockMapMutex.RUnlock()
@@ -253,6 +254,10 @@ func handleTransaction(conn net.Conn)  {
 				for {
 
 					lockMapMutex.RLock()
+					_, ok := lockMap[line_split[1]]
+					if !ok {
+						lockMap[line_split[1]] = map[int]int{}
+					}
 					WLock := lockMap[line_split[1]][2]
 					lockMapMutex.RUnlock()
 
@@ -305,7 +310,7 @@ func handleTransaction(conn net.Conn)  {
 						conn.Write([]byte("NO FOUND"))
 						conn.Write([]byte("This transaction is being aborted, please start a new one."))
 						break
-						
+
 					}else {
 
 						updateMap[line_split[1]] = string(buff[0:j])
@@ -318,7 +323,7 @@ func handleTransaction(conn net.Conn)  {
 			}
 
 		}
-		count++
+
 	}
 
 	<-endChan
