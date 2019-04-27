@@ -28,8 +28,10 @@ var (
 )
 
 var (
+
 	serverConnMap map[string]net.Conn
-	lockMap map[string]int
+	lockMap map[string]map[int]string
+
 	serverConnMapMutex = sync.RWMutex{}
 	lockMapMutex = sync.RWMutex{}
 )
@@ -88,7 +90,7 @@ func chanInit(){
 
 func mapInit()  {
 	serverConnMap = make(map[string]net.Conn)
-	lockMap = make(map[string]int)
+	lockMap = make(map[string]map[int]string)
 }
 
 func initialize(){
@@ -100,8 +102,11 @@ func handleTransaction(conn net.Conn)  {
 
 	buff := make([]byte, 10000)
 	endChan := make(chan bool)
+	count := 0
 
 	for {
+
+		transId := conn.RemoteAddr().String() + "-" + string(count)
 
 		for {
 
@@ -114,7 +119,7 @@ func handleTransaction(conn net.Conn)  {
 			msg := string(buff[0:j])
 
 			if msg == "BEGIN" {
-				fmt.Println("#Begin transaction.")
+				fmt.Printf("#Start a transaction, transactionID: %s.", transId)
 				break;
 			}
 
@@ -138,8 +143,12 @@ func handleTransaction(conn net.Conn)  {
 			if line_split[0] == "ABORT" {
 
 				lockMapMutex.Lock()
-				for k := range lockMap {
-					lockMap[k] = 0
+				for K := range lockMap {
+					for k := range lockMap[K] {
+						if lockMap[K][k] == transId {
+							lockMap[K][k] = ""
+						}
+					}
 				}
 				lockMapMutex.Unlock()
 
@@ -157,8 +166,12 @@ func handleTransaction(conn net.Conn)  {
 				}
 
 				lockMapMutex.Lock()
-				for k := range lockMap {
-					lockMap[k] = 0
+				for K := range lockMap {
+					for k := range lockMap[K] {
+						if lockMap[K][k] == transId {
+							lockMap[K][k] = ""
+						}
+					}
 				}
 				lockMapMutex.Unlock()
 
@@ -171,15 +184,24 @@ func handleTransaction(conn net.Conn)  {
 				server := strings.Split(line_split[1],".")[0]
 
 				for {
+
 					lockMapMutex.RLock()
 					lock := lockMap[line_split[1]]
 					lockMapMutex.RUnlock()
-					if lock != 0 {
-						continue
-					}
+
+					//if lock[1] != "" && lock[1] != transId {
+					//	continue
+					//}
+					//
+					//if lock[2] != "" && lock[2] != transId {
+					//	continue
+					//}
 
 					lockMapMutex.Lock()
-					lockMap[line_split[1]] = 2
+					//if lock[1] == transId {
+					//	lock[1]
+					//}
+					//lock[2] = transId
 					lockMapMutex.Unlock()
 
 					updateMap[line_split[1]] = line_split[2]
@@ -256,7 +278,7 @@ func handleTransaction(conn net.Conn)  {
 			}
 
 		}
-
+		count++
 	}
 
 	<-endChan
