@@ -28,6 +28,7 @@ var (
 
 var (
 	serverConnMap map[string]net.Conn
+	lockMap map[string]int
 )
 
 func checkErr(err error) int {
@@ -84,6 +85,7 @@ func chanInit(){
 
 func mapInit()  {
 	serverConnMap = make(map[string]net.Conn)
+	lockMap = make(map[string]int)
 }
 
 func initialize(){
@@ -131,6 +133,11 @@ func handleTransaction(conn net.Conn)  {
 
 
 			if line_split[0] == "ABORT" {
+
+				for k := range lockMap {
+					lockMap[k] = 0
+				}
+
 				conn.Write([]byte("ABORTED"))
 				break
 			}
@@ -141,24 +148,53 @@ func handleTransaction(conn net.Conn)  {
 					serverConn := serverConnMap[k]
 					serverConn.Write([]byte(v))
 				}
+
+				for k := range lockMap {
+					lockMap[k] = 0
+				}
+
 				conn.Write([]byte("COMMIT OK"))
 				break
 			}
 
 			if line_split[0] == "SET" {
+
 				server := strings.Split(line_split[1],".")[0]
-				fmt.Println("SET observed")
-				updateMap[line_split[1]] = line_split[2]
-				logMap[server] = line
-				conn.Write([]byte("OK"))
+
+
+				for {
+					lock := lockMap[line_split[1]]
+					if lock != 0 {
+						continue
+					}
+
+					lockMap[line_split[1]] = 2
+					updateMap[line_split[1]] = line_split[2]
+					logMap[server] = line
+					conn.Write([]byte("OK"))
+					break
+				}
+
 			}
 
 			if line_split[0] == "GET" {
+
 				server := strings.Split(line_split[1],".")[0]
 				v, ok := updateMap[line_split[1]]
+
 				if ok {
-					msg := line_split[1] + " = " + v
-					conn.Write([]byte(msg))
+
+					for {
+						lock := lockMap[line_split[1]]
+						if lock == 2 {
+							continue
+						}
+						lockMap[line_split[1]] = 1
+						msg := line_split[1] + " = " + v
+						conn.Write([]byte(msg))
+						break
+					}
+
 				}else {
 
 					serverConn := serverConnMap[server]
@@ -173,14 +209,25 @@ func handleTransaction(conn net.Conn)  {
 					if string(buff[0:j]) == "NO" {
 						// return NOT FOUND and abort the transaction.
 						conn.Write([]byte("NO FOUND"))
-						conn.Write([]byte("Aborting"))
+						conn.Write([]byte("This transaction is being aborted, please start a new one."))
 						break
 					}else {
-						updateMap[line_split[1]] = string(buff[0:j])
-						msg := line_split[1] + " = " + string(buff[0:j])
-						conn.Write([]byte(msg))
+
+						for {
+							lock := lockMap[line_split[1]]
+							if lock == 2 {
+								continue
+							}
+							lockMap[line_split[1]] = 1
+							updateMap[line_split[1]] = string(buff[0:j])
+							msg := line_split[1] + " = " + string(buff[0:j])
+							conn.Write([]byte(msg))
+							break
+						}
+
 					}
 				}
+
 			}
 
 		}
