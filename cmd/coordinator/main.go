@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 )
 
 var (
@@ -29,6 +30,8 @@ var (
 var (
 	serverConnMap map[string]net.Conn
 	lockMap map[string]int
+	serverConnMapMutex = sync.RWMutex{}
+	lockMapMutex = sync.RWMutex{}
 )
 
 func checkErr(err error) int {
@@ -134,9 +137,11 @@ func handleTransaction(conn net.Conn)  {
 
 			if line_split[0] == "ABORT" {
 
+				lockMapMutex.Lock()
 				for k := range lockMap {
 					lockMap[k] = 0
 				}
+				lockMapMutex.Unlock()
 
 				conn.Write([]byte("ABORTED"))
 				break
@@ -145,13 +150,17 @@ func handleTransaction(conn net.Conn)  {
 			if line_split[0] == "COMMIT" {
 
 				for k, v := range logMap {
+					serverConnMapMutex.RLock()
 					serverConn := serverConnMap[k]
+					serverConnMapMutex.RUnlock()
 					serverConn.Write([]byte(v))
 				}
 
+				lockMapMutex.Lock()
 				for k := range lockMap {
 					lockMap[k] = 0
 				}
+				lockMapMutex.Unlock()
 
 				conn.Write([]byte("COMMIT OK"))
 				break
@@ -162,12 +171,17 @@ func handleTransaction(conn net.Conn)  {
 				server := strings.Split(line_split[1],".")[0]
 
 				for {
+					lockMapMutex.RLock()
 					lock := lockMap[line_split[1]]
+					lockMapMutex.RUnlock()
 					if lock != 0 {
 						continue
 					}
 
+					lockMapMutex.Lock()
 					lockMap[line_split[1]] = 2
+					lockMapMutex.Unlock()
+
 					updateMap[line_split[1]] = line_split[2]
 					logMap[server] = line
 					conn.Write([]byte("OK"))
@@ -184,11 +198,17 @@ func handleTransaction(conn net.Conn)  {
 				if ok {
 
 					for {
+						lockMapMutex.RLock()
 						lock := lockMap[line_split[1]]
+						lockMapMutex.RUnlock()
 						if lock == 2 {
 							continue
 						}
+
+						lockMapMutex.Lock()
 						lockMap[line_split[1]] = 1
+						lockMapMutex.Unlock()
+
 						msg := line_split[1] + " = " + v
 						conn.Write([]byte(msg))
 						break
@@ -196,7 +216,9 @@ func handleTransaction(conn net.Conn)  {
 
 				}else {
 
+					serverConnMapMutex.RLock()
 					serverConn := serverConnMap[server]
+					serverConnMapMutex.RUnlock()
 					serverConn.Write([]byte(line))
 					j, err := serverConn.Read(buff)
 
@@ -213,11 +235,15 @@ func handleTransaction(conn net.Conn)  {
 					}else {
 
 						for {
+							lockMapMutex.RLock()
 							lock := lockMap[line_split[1]]
+							lockMapMutex.RUnlock()
 							if lock == 2 {
 								continue
 							}
+							lockMapMutex.Lock()
 							lockMap[line_split[1]] = 1
+							lockMapMutex.Unlock()
 							updateMap[line_split[1]] = string(buff[0:j])
 							msg := line_split[1] + " = " + string(buff[0:j])
 							conn.Write([]byte(msg))
