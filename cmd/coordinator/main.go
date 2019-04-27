@@ -185,9 +185,11 @@ func handleTransaction(conn net.Conn)  {
 					}
 
 					if v == 2 {
+
 						lockMapMutex.Lock()
 						lockMap[k][2] = 0
 						lockMapMutex.Unlock()
+
 					}
 
 				}
@@ -204,9 +206,17 @@ func handleTransaction(conn net.Conn)  {
 
 					lockMapMutex.RLock()
 					_, ok := lockMap[line_split[1]]
+					lockMapMutex.RUnlock()
+
 					if !ok {
+
+						lockMapMutex.Lock()
 						lockMap[line_split[1]] = map[int]int{}
+						lockMapMutex.Unlock()
+
 					}
+
+					lockMapMutex.RLock()
 					WLock := lockMap[line_split[1]][2]
 					RLock := lockMap[line_split[1]][1]
 					lockMapMutex.RUnlock()
@@ -214,10 +224,12 @@ func handleTransaction(conn net.Conn)  {
 					if WLock == 1 {
 
 						if holdLockMap[line_split[1]] == 2 {
+
 							updateMap[line_split[1]] = line_split[2]
 							logMap[server] = line
 							conn.Write([]byte("OK"))
 							break
+
 						}
 
 					}else {
@@ -231,15 +243,18 @@ func handleTransaction(conn net.Conn)  {
 							holdLockMap[line_split[1]] = 2
 
 							if RLock == 1 {
+
 								lockMapMutex.Lock()
 								lockMap[line_split[1]][1] -= 1
 								lockMapMutex.Unlock()
+
 							}
 
 							updateMap[line_split[1]] = line_split[2]
 							logMap[server] = line
 							conn.Write([]byte("OK"))
 							break
+
 						}
 
 					}
@@ -255,9 +270,17 @@ func handleTransaction(conn net.Conn)  {
 
 					lockMapMutex.RLock()
 					_, ok := lockMap[line_split[1]]
+					lockMapMutex.RUnlock()
+
 					if !ok {
+
+						lockMapMutex.Lock()
 						lockMap[line_split[1]] = map[int]int{}
+						lockMapMutex.Unlock()
+
 					}
+
+					lockMapMutex.RLock()
 					WLock := lockMap[line_split[1]][2]
 					lockMapMutex.RUnlock()
 
@@ -277,8 +300,7 @@ func handleTransaction(conn net.Conn)  {
 
 					break
 				}
-
-
+				
 				server := strings.Split(line_split[1],".")[0]
 				v, ok := updateMap[line_split[1]]
 
