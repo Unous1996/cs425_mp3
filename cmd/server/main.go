@@ -14,7 +14,7 @@ var (
 
 var (
 	workingChan chan bool
-
+	serverChan chan bool
 )
 
 var (
@@ -92,10 +92,12 @@ func startServer() {
 	defer conn.Close()
 	coordinatorConnection = conn
 	go readMessage(conn)
+	<-serverChan
 }
 
 func chanInit(){
 	workingChan = make(chan bool)
+	serverChan = make(chan bool)
 }
 
 func mapInit(){
@@ -112,7 +114,7 @@ func main(){
 		fmt.Println("Incorrect number of parameters")
 		os.Exit(1)
 	}
-	
+
 	portNum = os.Args[1]
 
 	addrs, err := net.InterfaceAddrs()
