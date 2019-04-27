@@ -43,37 +43,39 @@ func checkErr(err error) int {
 }
 
 func readMessage(conn *net.TCPConn){
-	buff := make([]byte, 10000)
+	fmt.Println("Start reading message")
+	buff := make([]byte, 256)
 	for {
 		j, err := conn.Read(buff)
 		flag := checkErr(err)
-		if flag == 0 && conn.RemoteAddr().String() == coordinatorAddresses + ":" + coordinatorPort {
-			fmt.Println("Coordinator has failed")
-			workingChan <- true
+		if flag == 0 {
+			if(conn.RemoteAddr().String() == coordinatorAddresses + ":" + coordinatorPort) {
+				fmt.Println("Coordinator has failed")
+				workingChan <- true
+			}
+			fmt.Println("Received a EOF")
 			break
 		}
 
-		receviedStringSpilt := strings.Split(string(buff[0:j]), "\n");
-		for _, line := range receviedStringSpilt {
-			line_split := strings.Split(line, " ")
-			if(line_split[0] == "SET"){
-				object := strings.Split(line_split[1],".")[1]
-				balance[object] = line_split[2]
-				continue
-			}
+		line_split := strings.Split(string(buff[0:j]), " ")
+		fmt.Println("line = ", string(buff[0:j]))
 
-			if(line_split[0] == "GET"){
-				fmt.Printf("PortNum %s received a GET\n", portNum)
-				object := strings.Split(line_split[1],".")[1]
-				_, ok := balance[object]
-				var replyGet string
-				if !ok {
-					replyGet = "NO"
-				} else {
-					replyGet = balance[object]
-				}
-				coordinatorConnection.Write([]byte(replyGet))
+		if(line_split[0] == "SET"){
+			object := strings.Split(line_split[1],".")[1]
+			balance[object] = line_split[2]
+			continue
+		}
+
+		if(line_split[0] == "GET"){
+			object := strings.Split(line_split[1],".")[1]
+			_, ok := balance[object]
+			var replyGet string
+			if !ok {
+				replyGet = "NO"
+			} else {
+				replyGet = balance[object]
 			}
+			conn.Write([]byte(replyGet))
 		}
 	}
 }
@@ -89,11 +91,12 @@ func startServer() {
 	fmt.Println("#Start listening on " + portNum)
 	// Accept Tcp connection from other VMs
 
-	conn, _ := tcpListen.AcceptTCP()
-	defer conn.Close()
-	coordinatorConnection = conn
-	go readMessage(conn)
-	<-serverChan
+	for {
+		conn, _ := tcpListen.AcceptTCP()
+		fmt.Println("Accepted TCP From", conn.RemoteAddr().String())
+		defer conn.Close()
+		go readMessage(conn)
+	}
 }
 
 func chanInit(){
@@ -136,7 +139,6 @@ func main(){
 	}
 
 	localHost = localIpAddress + ":" + portNum
-
 	initialize()
 
 	go startServer()

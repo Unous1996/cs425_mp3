@@ -8,9 +8,11 @@ import (
 )
 
 var (
-	serverName = []string{"A", "B", "C", "D", "E"}
-	serverPorts = []string{"7001", "7002", "7003", "7004", "7005"}
-	serverIpAddr = "172.22.156.54"
+	//serverName = []string{"A", "B", "C", "D", "E"}
+	//serverPorts = []string{"7001", "7002", "7003", "7004", "7005"}
+	serverName = []string{"A"}
+	serverPorts = []string{"7001"}
+	serverIpAddr = "10.195.210.190"
 )
 
 var (
@@ -126,7 +128,7 @@ func handleTransaction(conn net.Conn)  {
 
 			line := string(buff[0:j])
 			line_split := strings.Split(line, " ")
-			server := strings.Split(line_split[1],".")[0]
+
 
 			if line_split[0] == "ABORT" {
 				conn.Write([]byte("ABORTED"))
@@ -144,6 +146,7 @@ func handleTransaction(conn net.Conn)  {
 			}
 
 			if line_split[0] == "SET" {
+				server := strings.Split(line_split[1],".")[0]
 				fmt.Println("SET observed")
 				updateMap[line_split[1]] = line_split[2]
 				logMap[server] = line
@@ -151,6 +154,7 @@ func handleTransaction(conn net.Conn)  {
 			}
 
 			if line_split[0] == "GET" {
+				server := strings.Split(line_split[1],".")[0]
 				v, ok := updateMap[line_split[1]]
 				if ok {
 					msg := line_split[1] + " = " + v
@@ -158,6 +162,7 @@ func handleTransaction(conn net.Conn)  {
 				}else {
 
 					serverConn := serverConnMap[server]
+					serverConn.Write([]byte(line))
 					j, err := serverConn.Read(buff)
 
 					if err != nil {
@@ -168,6 +173,7 @@ func handleTransaction(conn net.Conn)  {
 					if string(buff[0:j]) == "NO" {
 						// return NOT FOUND and abort the transaction.
 						conn.Write([]byte("NO FOUND"))
+						conn.Write([]byte("Aborting"))
 						break
 					}else {
 						updateMap[line_split[1]] = string(buff[0:j])
