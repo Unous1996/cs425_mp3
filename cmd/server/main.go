@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	coordinatorAddresses = "10.105.210.190"
+	coordinatorAddresses = "10.195.210.190"
 	coordinatorPort = "6000"
 )
 
