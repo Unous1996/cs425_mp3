@@ -133,12 +133,11 @@ func handleTransaction(conn net.Conn)  {
 			if flag == 0 {
 				break
 			}
-
+			
 			line := string(buff[0:j])
-			line_split := strings.Split(line, " ")
+			lineSplit := strings.Split(line, " ")
 
-
-			if line_split[0] == "ABORT" {
+			if lineSplit[0] == "ABORT" {
 
 				for k, v := range holdLockMap {
 
@@ -158,12 +157,11 @@ func handleTransaction(conn net.Conn)  {
 
 				}
 
-
 				conn.Write([]byte("ABORTED"))
 				break
 			}
 
-			if line_split[0] == "COMMIT" {
+			if lineSplit[0] == "COMMIT" {
 
 				for k, v := range logMap {
 
@@ -171,7 +169,6 @@ func handleTransaction(conn net.Conn)  {
 					serverConn := serverConnMap[k]
 					serverConnMapMutex.RUnlock()
 					serverConn.Write([]byte(v))
-
 				}
 
 				for k, v := range holdLockMap {
@@ -198,59 +195,58 @@ func handleTransaction(conn net.Conn)  {
 				break
 			}
 
-			if line_split[0] == "SET" {
+			if lineSplit[0] == "SET" {
 
-				server := strings.Split(line_split[1],".")[0]
+				server := strings.Split(lineSplit[1],".")[0]
 
 				for {
 
 					lockMapMutex.RLock()
-					_, ok := lockMap[line_split[1]]
+					_, ok := lockMap[lineSplit[1]]
 					lockMapMutex.RUnlock()
 
 					if !ok {
 
 						lockMapMutex.Lock()
-						lockMap[line_split[1]] = map[int]int{}
+						lockMap[lineSplit[1]] = map[int]int{}
 						lockMapMutex.Unlock()
 
 					}
 
 					lockMapMutex.RLock()
-					WLock := lockMap[line_split[1]][2]
-					RLock := lockMap[line_split[1]][1]
+					WLock := lockMap[lineSplit[1]][2]
+					RLock := lockMap[lineSplit[1]][1]
 					lockMapMutex.RUnlock()
 
-					if WLock == 1 {
+					if WLock >= 1 {
 
-						if holdLockMap[line_split[1]] == 2 {
+						if holdLockMap[lineSplit[1]] == 2 {
 
-							updateMap[line_split[1]] = line_split[2]
+							updateMap[lineSplit[1]] = lineSplit[2]
 							logMap[server] = line
 							conn.Write([]byte("OK"))
 							break
-
 						}
 
-					}else {
+					} else {
 
-						if RLock == 0 || ( RLock == 1 && holdLockMap[line_split[1]] == 1) {
+						if RLock == 0 || ( RLock == 1 && holdLockMap[lineSplit[1]] == 1) {
 
 							lockMapMutex.Lock()
-							lockMap[line_split[1]][2] = 1
+							lockMap[lineSplit[1]][2] = 1
 							lockMapMutex.Unlock()
 
-							holdLockMap[line_split[1]] = 2
+							holdLockMap[lineSplit[1]] = 2
 
 							if RLock == 1 {
 
 								lockMapMutex.Lock()
-								lockMap[line_split[1]][1] -= 1
+								lockMap[lineSplit[1]][1] -= 1
 								lockMapMutex.Unlock()
 
 							}
 
-							updateMap[line_split[1]] = line_split[2]
+							updateMap[lineSplit[1]] = lineSplit[2]
 							logMap[server] = line
 							conn.Write([]byte("OK"))
 							break
@@ -261,52 +257,55 @@ func handleTransaction(conn net.Conn)  {
 
 				}
 
+				continue
+
 			}
 
-			if line_split[0] == "GET" {
-
-
+			if lineSplit[0] == "GET" {
+				fmt.Println("Received a GET")
 				for {
 
 					lockMapMutex.RLock()
-					_, ok := lockMap[line_split[1]]
+					_, ok := lockMap[lineSplit[1]]
 					lockMapMutex.RUnlock()
 
 					if !ok {
 
 						lockMapMutex.Lock()
-						lockMap[line_split[1]] = map[int]int{}
+						lockMap[lineSplit[1]] = map[int]int{}
 						lockMapMutex.Unlock()
 
 					}
 
 					lockMapMutex.RLock()
-					WLock := lockMap[line_split[1]][2]
+					WLock := lockMap[lineSplit[1]][2]
 					lockMapMutex.RUnlock()
 
-					if WLock == 1 && holdLockMap[line_split[1]] != 2 {
+					if WLock == 1 && holdLockMap[lineSplit[1]] != 2 {
 						continue
 					}
+					fmt.Println("Reached here 1")
+					if holdLockMap[lineSplit[1]] == 0 {
 
-					if holdLockMap[line_split[1]] == 0 {
-
-						holdLockMap[line_split[1]] = 1
+						holdLockMap[lineSplit[1]] = 1
 
 						lockMapMutex.Lock()
-						lockMap[line_split[1]][1] += 1
+						lockMap[lineSplit[1]][1] += 1
 						lockMapMutex.Unlock()
 
 					}
 
 					break
 				}
-				
-				server := strings.Split(line_split[1],".")[0]
-				v, ok := updateMap[line_split[1]]
+
+				fmt.Println("Reached here 2")
+				server := strings.Split(lineSplit[1],".")[0]
+				v, ok := updateMap[lineSplit[1]]
+				fmt.Println("Reached here 3")
 
 				if ok {
 
-					msg := line_split[1] + " = " + v
+					msg := lineSplit[1] + " = " + v
 					conn.Write([]byte(msg))
 
 				}else {
@@ -315,6 +314,7 @@ func handleTransaction(conn net.Conn)  {
 					serverConn := serverConnMap[server]
 					serverConnMapMutex.RUnlock()
 					serverConn.Write([]byte(line))
+					fmt.Println("Send some bytes to the server")
 					j, err := serverConn.Read(buff)
 
 					if err != nil {
@@ -326,30 +326,32 @@ func handleTransaction(conn net.Conn)  {
 						// return NOT FOUND and abort the transaction.
 
 						lockMapMutex.Lock()
-						lockMap[line_split[1]][1] -= 1
+						lockMap[lineSplit[1]][1] -= 1
 						lockMapMutex.Unlock()
 
 						conn.Write([]byte("NO FOUND"))
 						conn.Write([]byte("This transaction is being aborted, please start a new one."))
 						break
 
-					}else {
+					} else {
 
-						updateMap[line_split[1]] = string(buff[0:j])
-						msg := line_split[1] + " = " + string(buff[0:j])
+						updateMap[lineSplit[1]] = string(buff[0:j])
+						msg := lineSplit[1] + " = " + string(buff[0:j])
 						conn.Write([]byte(msg))
 
 					}
 				}
 
+				continue
+
 			}
 
 		}
 
+		/* Shall never break from this loop */
 	}
 
 	<-endChan
-
 }
 
 func main(){
