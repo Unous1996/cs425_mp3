@@ -155,7 +155,8 @@ func handleTransaction(conn net.Conn)  {
 	buff := make([]byte, 10000)
 	endChan := make(chan bool)
 	count := 0
-	remoteIpIndex := ip2ChannelIndexMap[strings.Split(conn.RemoteAddr().String(),":")[1]]
+	abort := false
+	//remoteIpIndex := ip2ChannelIndexMap[strings.Split(conn.RemoteAddr().String(),":")[1]]
 
 	for {
 
@@ -175,6 +176,7 @@ func handleTransaction(conn net.Conn)  {
 				count += 1
 				transactionID = conn.RemoteAddr().String() + "_" + strconv.Itoa(count)
 				fmt.Println("#Start a transaction whose ID is", transactionID)
+				abort = false
 				break;
 			}
 
@@ -185,6 +187,10 @@ func handleTransaction(conn net.Conn)  {
 		holdLockMap := make(map[string]int)
 
 		for {
+
+			if abort == true {
+				break
+			}
 
 			j, err := conn.Read(buff)
 			flag := checkErr(err)
@@ -296,12 +302,14 @@ func handleTransaction(conn net.Conn)  {
 							logMap[server] = append(logMap[server], line)
 							conn.Write([]byte("OK"))
 							break
-						} else {
+						} else  {
+							/*
 							select {
 								case <- abortChans[remoteIpIndex]:
 									fmt.Println("beginning to abort")
-								default:
 							}
+							*/
+
 						}
 
 					} else {
@@ -397,7 +405,7 @@ func handleTransaction(conn net.Conn)  {
 					msg := lineSplit[1] + " = " + v
 					conn.Write([]byte(msg))
 
-				}else {
+				} else {
 
 					serverConnMapMutex.RLock()
 					serverConn := serverConnMap[server]
@@ -460,10 +468,12 @@ func handleTransaction(conn net.Conn)  {
 	<-endChan
 }
 
-func sendAbortSignal(){
+func sendAbortSignal(abortChan chan bool){
+	fmt.Println("Reached here")
 	for{
 		time.Sleep(1*time.Second)
-		abortChans[0] <- true
+		abortChan <- true
+		fmt.Println("Sent an abort signal")
 	}
 }
 
@@ -477,6 +487,8 @@ func main(){
 	for i := range abortChans {
 		abortChans[i] = make(chan bool)
 	}
+
+	go sendAbortSignal(abortChans[0])
 
 	ip2ChannelIndexMap = make(map[string]int)
 	ip2ChannelIndexMap = map[string]int{
@@ -496,12 +508,13 @@ func main(){
 
 	fmt.Println("#This is the coordinator code")
 
+
+
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-
 
 	for _, address := range addrs {
 		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
@@ -518,7 +531,5 @@ func main(){
 
 	startCoordinator()
 
-	go sendAbortSignal()
-
-	//<-workingChan
+	<-workingChan
 }
