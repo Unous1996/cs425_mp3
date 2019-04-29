@@ -57,11 +57,6 @@ func initialize(){
 
 func main(){
 
-	if len(os.Args) != 2 {
-		fmt.Println("Incorrect number of parameters")
-		os.Exit(1)
-	}
-
 	coordinatorHost := coordinatorAddresses + ":" + coordinatorPort
 	initialize()
 

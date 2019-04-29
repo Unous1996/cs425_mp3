@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Node struct {
@@ -31,15 +32,15 @@ var (
 var (
 	workingChan chan bool
 	dialChan chan bool
-	abortChans [2]chan bool
+	abortChans [10]chan bool
 )
 
 var (
-
 	serverConnMap map[string]net.Conn
 	lockMap map[string]map[int]int
 	readLockHolderMNap map[string]map[string]bool
 	writeLockHolderMNap map[string]string
+	ip2ChannelIndexMap map[string]int
 
 	serverConnMapMutex = sync.RWMutex{}
 	lockMapMutex = sync.RWMutex{}
@@ -154,6 +155,7 @@ func handleTransaction(conn net.Conn)  {
 	buff := make([]byte, 10000)
 	endChan := make(chan bool)
 	count := 0
+	remoteIpIndex := ip2ChannelIndexMap[strings.Split(conn.RemoteAddr().String(),":")[1]]
 
 	for {
 
@@ -294,6 +296,12 @@ func handleTransaction(conn net.Conn)  {
 							logMap[server] = append(logMap[server], line)
 							conn.Write([]byte("OK"))
 							break
+						} else {
+							select {
+								case <- abortChans[remoteIpIndex]:
+									fmt.Println("beginning to abort")
+								default:
+							}
 						}
 
 					} else {
@@ -424,7 +432,6 @@ func handleTransaction(conn net.Conn)  {
 								writeLockHolderMNap[k] = ""
 								writeLockHolderMNapMutex.Unlock()
 							}
-
 						}
 
 						conn.Write([]byte("NO FOUND"))
@@ -453,6 +460,12 @@ func handleTransaction(conn net.Conn)  {
 	<-endChan
 }
 
+func sendAbortSignal(){
+	for{
+		time.Sleep(1*time.Second)
+		abortChans[0] <- true
+	}
+}
 
 func main(){
 
@@ -463,6 +476,20 @@ func main(){
 
 	for i := range abortChans {
 		abortChans[i] = make(chan bool)
+	}
+
+	ip2ChannelIndexMap = make(map[string]int)
+	ip2ChannelIndexMap = map[string]int{
+		"172.22.156.52": 0,
+		"172.22.158.52": 1,
+		"172.22.94.61":  2,
+		"172.22.156.53": 3,
+		"172.22.158.53": 4,
+		"172.22.94.62":  5,
+		"172.22.156.54": 6,
+		"172.22.158.54": 7,
+		"172.22.94.63":  8,
+		"172.22.156.55": 9,
 	}
 
 	portNum = os.Args[1]
@@ -490,6 +517,8 @@ func main(){
 	initialize()
 
 	startCoordinator()
+
+	go sendAbortSignal()
 
 	//<-workingChan
 }
