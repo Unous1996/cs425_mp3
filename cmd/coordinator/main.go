@@ -4,9 +4,15 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 )
+
+type Node struct {
+	neighbors []*Node
+	txid string
+}
 
 var (
 	//serverName = []string{"A", "B", "C", "D", "E"}
@@ -31,9 +37,13 @@ var (
 
 	serverConnMap map[string]net.Conn
 	lockMap map[string]map[int]int
+	readLockHolderMNap map[string]map[string]bool
+	writeLockHolderMNap map[string]string
 
 	serverConnMapMutex = sync.RWMutex{}
 	lockMapMutex = sync.RWMutex{}
+	readLockHolderMNapMutex = sync.RWMutex{}
+	writeLockHolderMNapMutex = sync.RWMutex{}
 )
 
 func checkErr(err error) int {
@@ -45,6 +55,44 @@ func checkErr(err error) int {
 		return -1
 	}
 	return 1
+}
+
+func deadlockDetection (nodemap map[string]*Node) bool {
+	//calculating the in degree of each graph
+	indegree := make(map[string]int)
+	for _, node := range nodemap {
+		for _, neighbor := range node.neighbors {
+			indegree[neighbor.txid] += 1
+		}
+	}
+
+	var queue []*Node
+	//Push all the nodes with zero indegree in the queue
+	for _, node := range nodemap {
+		if indegree[node.txid] == 0 {
+			queue = append(queue, node)
+		}
+	}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		for _, neighbor := range current.neighbors {
+			indegree[neighbor.txid] -= 1
+			if indegree[neighbor.txid] == 0 {
+				queue = append(queue, neighbor)
+			}
+		}
+	}
+
+	for _, value := range indegree {
+		if value > 0 {
+			return true
+		}
+	}
+
+	return false
 }
 
 func startCoordinator() {
@@ -88,9 +136,11 @@ func chanInit(){
 	dialChan = make(chan bool)
 }
 
-func mapInit()  {
+func mapInit(){
 	serverConnMap = make(map[string]net.Conn)
 	lockMap = make(map[string]map[int]int)
+	readLockHolderMNap = make(map[string]map[string]bool)
+	writeLockHolderMNap = make(map[string]string)
 }
 
 func initialize(){
@@ -102,9 +152,11 @@ func handleTransaction(conn net.Conn)  {
 
 	buff := make([]byte, 10000)
 	endChan := make(chan bool)
+	count := 0
 
 	for {
 
+		var transactionID string
 		for {
 
 			j, err := conn.Read(buff)
@@ -116,14 +168,17 @@ func handleTransaction(conn net.Conn)  {
 			msg := string(buff[0:j])
 
 			if msg == "BEGIN" {
-				fmt.Println("#Start a transaction.")
+
+				count += 1
+				transactionID = conn.RemoteAddr().String() + "_" + strconv.Itoa(count)
+				fmt.Println("#Start a transaction whose ID is", transactionID)
 				break;
 			}
 
 		}
 
 		updateMap := make(map[string]string)
-		logMap := make(map[string]string)
+		logMap := make(map[string][]string)
 		holdLockMap := make(map[string]int)
 
 		for {
@@ -146,13 +201,18 @@ func handleTransaction(conn net.Conn)  {
 						lockMapMutex.Lock()
 						lockMap[k][1] -= 1
 						lockMapMutex.Unlock()
-
+						readLockHolderMNapMutex.Lock()
+						delete(readLockHolderMNap[k], transactionID)
+						readLockHolderMNapMutex.Unlock()
 					}
 
 					if v == 2 {
 						lockMapMutex.Lock()
 						lockMap[k][2] = 0
 						lockMapMutex.Unlock()
+						writeLockHolderMNapMutex.Lock()
+						writeLockHolderMNap[k] = ""
+						writeLockHolderMNapMutex.Unlock()
 					}
 
 				}
@@ -168,7 +228,10 @@ func handleTransaction(conn net.Conn)  {
 					serverConnMapMutex.RLock()
 					serverConn := serverConnMap[k]
 					serverConnMapMutex.RUnlock()
-					serverConn.Write([]byte(v))
+
+					for _, line := range v {
+						serverConn.Write([]byte(line+"\n"))
+					}
 				}
 
 				for k, v := range holdLockMap {
@@ -178,7 +241,9 @@ func handleTransaction(conn net.Conn)  {
 						lockMapMutex.Lock()
 						lockMap[k][1] -= 1
 						lockMapMutex.Unlock()
-
+						readLockHolderMNapMutex.Lock()
+						delete(readLockHolderMNap[k], transactionID)
+						readLockHolderMNapMutex.Unlock()
 					}
 
 					if v == 2 {
@@ -186,7 +251,9 @@ func handleTransaction(conn net.Conn)  {
 						lockMapMutex.Lock()
 						lockMap[k][2] = 0
 						lockMapMutex.Unlock()
-
+						writeLockHolderMNapMutex.Lock()
+						writeLockHolderMNap[k] = ""
+						writeLockHolderMNapMutex.Unlock()
 					}
 
 				}
@@ -223,7 +290,7 @@ func handleTransaction(conn net.Conn)  {
 						if holdLockMap[lineSplit[1]] == 2 {
 
 							updateMap[lineSplit[1]] = lineSplit[2]
-							logMap[server] = line
+							logMap[server] = append(logMap[server], line)
 							conn.Write([]byte("OK"))
 							break
 						}
@@ -236,18 +303,25 @@ func handleTransaction(conn net.Conn)  {
 							lockMap[lineSplit[1]][2] = 1
 							lockMapMutex.Unlock()
 
+							writeLockHolderMNapMutex.Lock()
+							writeLockHolderMNap[lineSplit[1]] = transactionID
+							writeLockHolderMNapMutex.Unlock()
+
 							holdLockMap[lineSplit[1]] = 2
 
 							if RLock == 1 {
 
 								lockMapMutex.Lock()
 								lockMap[lineSplit[1]][1] -= 1
+								readLockHolderMNapMutex.Lock()
+								delete(readLockHolderMNap, lineSplit[1])
+								readLockHolderMNapMutex.Unlock()
 								lockMapMutex.Unlock()
 
 							}
 
 							updateMap[lineSplit[1]] = lineSplit[2]
-							logMap[server] = line
+							logMap[server] = append(logMap[server], line)
 							conn.Write([]byte("OK"))
 							break
 
@@ -288,11 +362,19 @@ func handleTransaction(conn net.Conn)  {
 					if holdLockMap[lineSplit[1]] == 0 {
 
 						holdLockMap[lineSplit[1]] = 1
-
 						lockMapMutex.Lock()
 						lockMap[lineSplit[1]][1] += 1
-						lockMapMutex.Unlock()
 
+						readLockHolderMNapMutex.RLock()
+						_, ok := readLockHolderMNap[lineSplit[1]]
+						readLockHolderMNapMutex.RUnlock()
+						readLockHolderMNapMutex.Lock()
+						if ! ok {
+							readLockHolderMNap[lineSplit[1]] = map[string]bool{}
+						}
+						readLockHolderMNap[lineSplit[1]][transactionID] = true
+						readLockHolderMNapMutex.Unlock()
+						lockMapMutex.Unlock()
 					}
 
 					break
@@ -313,7 +395,7 @@ func handleTransaction(conn net.Conn)  {
 					serverConnMapMutex.RLock()
 					serverConn := serverConnMap[server]
 					serverConnMapMutex.RUnlock()
-					serverConn.Write([]byte(line))
+					serverConn.Write([]byte(line+"\n"))
 					fmt.Println("Send some bytes to the server")
 					j, err := serverConn.Read(buff)
 
@@ -324,13 +406,31 @@ func handleTransaction(conn net.Conn)  {
 
 					if string(buff[0:j]) == "NO" {
 						// return NOT FOUND and abort the transaction.
+						for k, v := range holdLockMap {
+							if v == 1 {
 
-						lockMapMutex.Lock()
-						lockMap[lineSplit[1]][1] -= 1
-						lockMapMutex.Unlock()
+								lockMapMutex.Lock()
+								lockMap[k][1] -= 1
+								lockMapMutex.Unlock()
+								readLockHolderMNapMutex.Lock()
+								delete(readLockHolderMNap[k], transactionID)
+								readLockHolderMNapMutex.Unlock()
+							}
+
+							if v == 2 {
+								lockMapMutex.Lock()
+								lockMap[k][2] = 0
+								lockMapMutex.Unlock()
+								writeLockHolderMNapMutex.Lock()
+								writeLockHolderMNap[k] = ""
+								writeLockHolderMNapMutex.Unlock()
+							}
+
+						}
 
 						conn.Write([]byte("NO FOUND"))
 						conn.Write([]byte("This transaction is being aborted, please start a new one."))
+
 						break
 
 					} else {

@@ -59,32 +59,37 @@ func readMessage(conn *net.TCPConn){
 			break
 		}
 
-		line_split := strings.Split(string(buff[0:j]), " ")
-		fmt.Println("line = ", string(buff[0:j]))
+		receivedLines := strings.Split(string(buff[0:j]),"\n")
 
-		if(line_split[0] == "SET"){
-			object := strings.Split(line_split[1],".")[1]
-			balanceMutex.Lock()
-			balance[object] = line_split[2]
-			balanceMutex.Unlock()
-			continue
-		}
+		for _, line := range receivedLines {
+			lineSplit := strings.Split(line, " ")
+			fmt.Println("line = ", line)
 
-		if(line_split[0] == "GET"){
-			object := strings.Split(line_split[1],".")[1]
-			balanceMutex.RLock()
-			_, ok := balance[object]
-			balanceMutex.RUnlock()
-			var replyGet string
-			if !ok {
-				replyGet = "NO"
-			} else {
-				balanceMutex.RLock()
-				replyGet = balance[object]
-				balanceMutex.RUnlock()
+			if(lineSplit[0] == "SET") {
+				object := strings.Split(lineSplit[1],".")[1]
+				balanceMutex.Lock()
+				balance[object] = lineSplit[2]
+				balanceMutex.Unlock()
+				continue
 			}
-			conn.Write([]byte(replyGet))
+
+			if(lineSplit[0] == "GET") {
+				object := strings.Split(lineSplit[1],".")[1]
+				balanceMutex.RLock()
+				_, ok := balance[object]
+				balanceMutex.RUnlock()
+				var replyGet string
+				if !ok {
+					replyGet = "NO"
+				} else {
+					balanceMutex.RLock()
+					replyGet = balance[object]
+					balanceMutex.RUnlock()
+				}
+				conn.Write([]byte(replyGet))
+			}
 		}
+
 	}
 }
 
