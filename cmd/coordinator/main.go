@@ -31,6 +31,7 @@ var (
 var (
 	workingChan chan bool
 	dialChan chan bool
+	abortChans [2]chan bool
 )
 
 var (
@@ -324,9 +325,7 @@ func handleTransaction(conn net.Conn)  {
 							logMap[server] = append(logMap[server], line)
 							conn.Write([]byte("OK"))
 							break
-
 						}
-
 					}
 
 				}
@@ -454,11 +453,16 @@ func handleTransaction(conn net.Conn)  {
 	<-endChan
 }
 
+
 func main(){
 
 	if len(os.Args) != 2 {
 		fmt.Println("#Incorrect number of parameters")
 		os.Exit(1)
+	}
+
+	for i := range abortChans {
+		abortChans[i] = make(chan bool)
 	}
 
 	portNum = os.Args[1]
