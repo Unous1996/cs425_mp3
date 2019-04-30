@@ -15,11 +15,11 @@ type Node struct {
 }
 
 var (
-	//serverName = []string{"A", "B", "C", "D", "E"}
-	//serverPorts = []string{"7001", "7002", "7003", "7004", "7005"}
-	serverName = []string{"A"}
-	serverPorts = []string{"7001"}
-	serverIpAddr = "10.195.210.190"
+	serverName = []string{"A", "B", "C", "D", "E"}
+	serverPorts = []string{"7001", "7002", "7003", "7004", "7005"}
+	//serverName = []string{"A"}
+	//serverPorts = []string{"7001"}
+	serverIpAddr = "172.22.156.54"
 )
 
 var (
@@ -181,7 +181,6 @@ func readMessage(conn net.Conn) {
 	remoteIpIndex := ip2ChannelIndexMap[strings.Split(conn.RemoteAddr().String(),":")[0]]
 	ip2ChannelINdexMapMutex.RUnlock()
 	transactionPrefix := conn.RemoteAddr().String()
-	fmt.Println("remoteIpIndex = ", remoteIpIndex)
 	go handleTransaction(conn, remoteIpIndex, transactionPrefix)
 
 	for {
@@ -194,7 +193,6 @@ func readMessage(conn net.Conn) {
 		msg := string(buff[0:j])
 
 		if msg == "BEGIN" {
-			fmt.Println("recevide a BEGIN")
 			beginChans[remoteIpIndex] <- true
 			continue
 		}
@@ -234,7 +232,6 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 	//remoteIpIndex := ip2ChannelIndexMap[strings.Split(conn.RemoteAddr().String(),":")[1]]
 
 	for {
-		fmt.Println("Waiting for BEGIN")
 		<-beginChans[remoteIpindex]
 		count += 1
 		transactionID := transactionPrefix + "_" + strconv.Itoa(count)
@@ -242,7 +239,7 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 		newestTransactionMutex.Lock()
 		newestTransaction = transactionID
 		newestTransactionMutex.Unlock()
-		conn.Write([]byte("OK" + transactionID))
+		conn.Write([]byte("OK"))
 
 		updateMap := make(map[string]string)
 		logMap := make(map[string][]string)
@@ -250,7 +247,6 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 		breakLoop :=  false
 
 		for {
-			fmt.Printf("RemoteIdx = %d, breakLoop = %d\n", remoteIpindex, breakLoop)
 			if breakLoop {
 				//row clear
 				for col := 0; col < MAXCLIENT; col++ {
@@ -331,7 +327,7 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 						}
 
 					}
-					fmt.Println("Abort type 1")
+
 					conn.Write([]byte("ABORTED"))
 					breakLoop = true
 
@@ -367,7 +363,6 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 						if WLock >= 1 {
 
 							if holdLockMap[lineSplit[1]] == 2 {
-								fmt.Println("abortWait = ", abortWait)
 								if abortWait {
 									for k, v := range holdLockMap {
 
@@ -391,7 +386,6 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 										}
 
 									}
-									fmt.Println("Abort Type 2")
 									conn.Write([]byte("ABORTED"))
 									breakLoop = true
 									break
@@ -438,8 +432,7 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 										}
 									}
 
-									fmt.Println("Deadlock Abort Type 1")
-									conn.Write([]byte("DEADLOCK ABORTED"))
+									conn.Write([]byte("ABORTED"))
 									breakLoop = true
 									break
 								}
@@ -478,7 +471,6 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 										}
 
 									}
-									fmt.Println("Abort type 3")
 									conn.Write([]byte("ABORTED"))
 									breakLoop = true
 									break
@@ -556,8 +548,8 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 											}
 
 										}
-										fmt.Println("Deadlock Abort type 2")
-										conn.Write([]byte("DEADLOCK ABORTED"))
+
+										conn.Write([]byte("ABORTED"))
 										hasDeadlock = true
 										breakLoop = true
 										readLockHolderMNapMutex.RLock()
@@ -647,8 +639,7 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 
 								}
 
-								fmt.Println("Deadlock Abort type 3")
-								conn.Write([]byte("DEADLOCK ABORTED"))
+								conn.Write([]byte("ABORTED"))
 								breakLoop = true
 								break
 							}
@@ -685,7 +676,6 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 
 							}
 
-							fmt.Println("Abort type 4")
 							conn.Write([]byte("ABORTED"))
 							breakLoop = true
 							break
@@ -731,10 +721,8 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 						break
 					}
 
-					fmt.Println("Reached here 2")
 					server := strings.Split(lineSplit[1],".")[0]
 					v, ok := updateMap[lineSplit[1]]
-					fmt.Println("Reached here 3")
 
 					if ok {
 
@@ -747,7 +735,6 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 						serverConn := serverConnMap[server]
 						serverConnMapMutex.RUnlock()
 						serverConn.Write([]byte(line+"\n"))
-						fmt.Println("Send some bytes to the server")
 						j, err := serverConn.Read(serverBuff)
 
 						if err != nil {
@@ -778,13 +765,11 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 								}
 							}
 
-							conn.Write([]byte("NO FOUND"))
-							conn.Write([]byte("This transaction is being aborted, please start a new one."))
+							conn.Write([]byte("NOT FOUND"))
 							breakLoop = true
 							break
 
 						} else {
-							fmt.Println("Found in the server")
 							updateMap[lineSplit[1]] = string(serverBuff[0:j])
 							msg := lineSplit[1] + " = " + string(serverBuff[0:j])
 							conn.Write([]byte(msg))
@@ -839,6 +824,7 @@ func main(){
 		"172.22.94.63":  8,
 		"172.22.156.55": 9,
 	}
+
 
 	portNum = os.Args[1]
 

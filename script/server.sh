@@ -1,3 +1,4 @@
+ls
 port=7000
 cd ../cmd/server
 go build
