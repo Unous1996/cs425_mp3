@@ -10,7 +10,7 @@ import (
 )
 
 type Node struct {
-	neighbors []*Node
+	neighbors []string
 	txid string
 }
 
@@ -39,8 +39,15 @@ var (
 )
 
 var (
+	newestTransaction string
+	newestTransactionMutex = sync.RWMutex{}
+)
+
+var (
 	serverConnMap map[string]net.Conn
 	lockMap map[string]map[int]int
+	adjaencyMap map[int]map[int]bool
+
 	readLockHolderMNap map[string]map[string]bool
 	writeLockHolderMNap map[string]string
 	ip2ChannelIndexMap map[string]int
@@ -49,6 +56,12 @@ var (
 	lockMapMutex = sync.RWMutex{}
 	readLockHolderMNapMutex = sync.RWMutex{}
 	writeLockHolderMNapMutex = sync.RWMutex{}
+	ip2ChannelINdexMapMutex = sync.RWMutex{}
+	adjaenctMapMutex = sync.RWMutex{}
+)
+
+var (
+	MAXCLIENT int
 )
 
 func checkErr(err error) int {
@@ -62,31 +75,36 @@ func checkErr(err error) int {
 	return 1
 }
 
-func deadlockDetection (nodemap map[string]*Node) bool {
-	//calculating the in degree of each graph
-	indegree := make(map[string]int)
-	for _, node := range nodemap {
-		for _, neighbor := range node.neighbors {
-			indegree[neighbor.txid] += 1
+func deadlockDetectionAdj(nodemap map[int]map[int]bool) bool {
+
+	indegree := make(map[int]int)
+	for col := 0; col < MAXCLIENT; col++ {
+		sum := 0
+		for row := 0; row < MAXCLIENT; row++ {
+			if nodemap[row][col] {
+				sum += 1
+			}
 		}
+		indegree[col] = sum
 	}
 
-	var queue []*Node
-	//Push all the nodes with zero indegree in the queue
-	for _, node := range nodemap {
-		if indegree[node.txid] == 0 {
-			queue = append(queue, node)
+	var queue []int
+
+	for row := 0; row < MAXCLIENT; row++ {
+		if indegree[row] == 0 {
+			queue = append(queue, row)
 		}
 	}
 
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-
-		for _, neighbor := range current.neighbors {
-			indegree[neighbor.txid] -= 1
-			if indegree[neighbor.txid] == 0 {
-				queue = append(queue, neighbor)
+		for col := 0; col < MAXCLIENT; col++ {
+			if nodemap[current][col] {
+				indegree[col] -= 1
+				if indegree[col] == 0 {
+					queue = append(queue, col)
+				}
 			}
 		}
 	}
@@ -121,7 +139,9 @@ func startCoordinator() {
 			fmt.Printf("#Failed to connect to Server%v.", serverName[i])
 		}
 
+		serverConnMapMutex.Lock()
 		serverConnMap[serverName[i]] = conn
+		serverConnMapMutex.Unlock()
 		defer conn.Close()
 
 	}
@@ -157,7 +177,9 @@ func readMessage(conn net.Conn) {
 
 	buff := make([]byte, 10000)
 	endChan := make(chan bool)
+	ip2ChannelINdexMapMutex.RLock()
 	remoteIpIndex := ip2ChannelIndexMap[strings.Split(conn.RemoteAddr().String(),":")[0]]
+	ip2ChannelINdexMapMutex.RUnlock()
 	transactionPrefix := conn.RemoteAddr().String()
 	fmt.Println("remoteIpIndex = ", remoteIpIndex)
 	go handleTransaction(conn, remoteIpIndex, transactionPrefix)
@@ -217,7 +239,10 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 		count += 1
 		transactionID := transactionPrefix + "_" + strconv.Itoa(count)
 		fmt.Println("#Start a transaction whose ID is", transactionID)
-		conn.Write([]byte("OK"))
+		newestTransactionMutex.Lock()
+		newestTransaction = transactionID
+		newestTransactionMutex.Unlock()
+		conn.Write([]byte("OK" + transactionID))
 
 		updateMap := make(map[string]string)
 		logMap := make(map[string][]string)
@@ -227,6 +252,18 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 		for {
 			fmt.Printf("RemoteIdx = %d, breakLoop = %d\n", remoteIpindex, breakLoop)
 			if breakLoop {
+				//row clear
+				for col := 0; col < MAXCLIENT; col++ {
+					adjaenctMapMutex.Lock()
+					adjaencyMap[remoteIpindex][col] = false
+					adjaenctMapMutex.Unlock()
+				}
+				//col clear
+				for row := 0; row < MAXCLIENT; row ++ {
+					adjaenctMapMutex.Lock()
+					adjaencyMap[row][remoteIpindex] = false
+					adjaenctMapMutex.Unlock()
+				}
 				break
 			}
 
@@ -302,7 +339,12 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 					lineSplit := strings.Split(line, " ")
 					server := strings.Split(lineSplit[1],".")[0]
 					abortWait := false
-
+					var amount string
+					if(len(lineSplit) < 3){
+						amount = "0"
+					} else {
+						amount = lineSplit[2]
+					}
 					for {
 
 						lockMapMutex.RLock()
@@ -354,11 +396,55 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 									breakLoop = true
 									break
 								}
- 								updateMap[lineSplit[1]] = lineSplit[2]
+ 								updateMap[lineSplit[1]] = amount
 								logMap[server] = append(logMap[server], line)
 								conn.Write([]byte("OK"))
 								break
 							} else {
+
+								ip2ChannelINdexMapMutex.RLock()
+								writeLockHolderMNapMutex.RLock()
+								writeLockHolderIndex := ip2ChannelIndexMap[strings.Split(writeLockHolderMNap[lineSplit[1]],":")[0]]
+								//fmt.Println("WriteLockHolderIndex = ", writeLockHolderIndex)
+								writeLockHolderMNapMutex.RUnlock()
+								ip2ChannelINdexMapMutex.RUnlock()
+
+								adjaenctMapMutex.Lock()
+								adjaencyMap[remoteIpindex][writeLockHolderIndex] = true
+								adjaenctMapMutex.Unlock()
+
+								adjaenctMapMutex.RLock()
+								if deadlockDetectionAdj(adjaencyMap) && transactionID == newestTransaction {
+									adjaenctMapMutex.RUnlock()
+									for k, v := range holdLockMap {
+
+										if v == 1 {
+
+											lockMapMutex.Lock()
+											lockMap[k][1] -= 1
+											lockMapMutex.Unlock()
+											readLockHolderMNapMutex.Lock()
+											delete(readLockHolderMNap[k], transactionID)
+											readLockHolderMNapMutex.Unlock()
+										}
+
+										if v == 2 {
+											lockMapMutex.Lock()
+											lockMap[k][2] = 0
+											lockMapMutex.Unlock()
+											writeLockHolderMNapMutex.Lock()
+											writeLockHolderMNap[k] = ""
+											writeLockHolderMNapMutex.Unlock()
+										}
+									}
+
+									fmt.Println("Deadlock Abort Type 1")
+									conn.Write([]byte("DEADLOCK ABORTED"))
+									breakLoop = true
+									break
+								}
+								adjaenctMapMutex.RUnlock()
+
 								select {
 									case <-abortChans[remoteIpindex]:
 										abortWait = true
@@ -412,18 +498,80 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 
 									lockMapMutex.Lock()
 									lockMap[lineSplit[1]][1] -= 1
+									lockMapMutex.Unlock()
+
 									readLockHolderMNapMutex.Lock()
 									delete(readLockHolderMNap, lineSplit[1])
 									readLockHolderMNapMutex.Unlock()
-									lockMapMutex.Unlock()
 
 								}
 
-								updateMap[lineSplit[1]] = lineSplit[2]
+								updateMap[lineSplit[1]] = amount
 								logMap[server] = append(logMap[server], line)
 								conn.Write([]byte("OK"))
 								break
 							} else {
+
+								hasDeadlock := false
+								readLockHolderMNapMutex.RLock()
+								for readLockHolderId, _ := range readLockHolderMNap[lineSplit[1]]{
+									readLockHolderMNapMutex.RUnlock()
+									ip2ChannelINdexMapMutex.RLock()
+									readLockHolderIndex := ip2ChannelIndexMap[strings.Split(readLockHolderId,":")[0]]
+									ip2ChannelINdexMapMutex.RUnlock()
+									//fmt.Println("readLockHolderIndex = ", readLockHolderIndex)
+									adjaenctMapMutex.Lock()
+									adjaencyMap[remoteIpindex][readLockHolderIndex] = true
+									adjaenctMapMutex.Unlock()
+
+									/*
+									nodeMapMutex.Lock()
+									nodeMap[transactionID].neighbors = append(nodeMap[transactionID].neighbors, readLockHolderId)
+									nodeMapMutex.Unlock()
+									nodeMapMutex.RLock()
+									*/
+
+									adjaenctMapMutex.RLock()
+									if deadlockDetectionAdj(adjaencyMap) && transactionID == newestTransaction {
+										adjaenctMapMutex.RUnlock()
+										for k, v := range holdLockMap {
+
+											if v == 1 {
+
+												lockMapMutex.Lock()
+												lockMap[k][1] -= 1
+												lockMapMutex.Unlock()
+												readLockHolderMNapMutex.Lock()
+												delete(readLockHolderMNap[k], transactionID)
+												readLockHolderMNapMutex.Unlock()
+											}
+
+											if v == 2 {
+												lockMapMutex.Lock()
+												lockMap[k][2] = 0
+												lockMapMutex.Unlock()
+												writeLockHolderMNapMutex.Lock()
+												writeLockHolderMNap[k] = ""
+												writeLockHolderMNapMutex.Unlock()
+											}
+
+										}
+										fmt.Println("Deadlock Abort type 2")
+										conn.Write([]byte("DEADLOCK ABORTED"))
+										hasDeadlock = true
+										breakLoop = true
+										readLockHolderMNapMutex.RLock()
+										break
+									}
+									adjaenctMapMutex.RUnlock()
+									readLockHolderMNapMutex.RLock()
+								}
+								readLockHolderMNapMutex.RUnlock()
+
+								if hasDeadlock {
+									break
+								}
+
 								select {
 									case <-abortChans[remoteIpindex]:
 										abortWait = true
@@ -456,6 +604,56 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 						lockMapMutex.RUnlock()
 
 						if WLock == 1 && holdLockMap[lineSplit[1]] != 2 {
+							/*
+							nodeMapMutex.Lock()
+							nodeMap[transactionID].neighbors = append(nodeMap[transactionID].neighbors, writeLockHolderMNap[transactionID])
+							nodeMapMutex.Unlock()
+							nodeMapMutex.RLock()
+							*/
+
+							ip2ChannelINdexMapMutex.RLock()
+							writeLockHolderMNapMutex.RLock()
+							writeLockHolderIndex := ip2ChannelIndexMap[strings.Split(writeLockHolderMNap[lineSplit[1]],":")[0]]
+							//fmt.Println("WriteLockHolderIndex = ", writeLockHolderIndex)
+							writeLockHolderMNapMutex.RUnlock()
+							ip2ChannelINdexMapMutex.RUnlock()
+
+							adjaenctMapMutex.Lock()
+							adjaencyMap[remoteIpindex][writeLockHolderIndex] = true
+							adjaenctMapMutex.Unlock()
+
+							adjaenctMapMutex.RLock()
+							if deadlockDetectionAdj(adjaencyMap) && transactionID == newestTransaction{
+								adjaenctMapMutex.RUnlock()
+								for k, v := range holdLockMap {
+
+									if v == 1 {
+										lockMapMutex.Lock()
+										lockMap[k][1] -= 1
+										lockMapMutex.Unlock()
+										readLockHolderMNapMutex.Lock()
+										delete(readLockHolderMNap[k], transactionID)
+										readLockHolderMNapMutex.Unlock()
+									}
+
+									if v == 2 {
+										lockMapMutex.Lock()
+										lockMap[k][2] = 0
+										lockMapMutex.Unlock()
+										writeLockHolderMNapMutex.Lock()
+										writeLockHolderMNap[k] = ""
+										writeLockHolderMNapMutex.Unlock()
+									}
+
+								}
+
+								fmt.Println("Deadlock Abort type 3")
+								conn.Write([]byte("DEADLOCK ABORTED"))
+								breakLoop = true
+								break
+							}
+							adjaenctMapMutex.RUnlock()
+
 							select {
 								case <-abortChans[remoteIpindex]:
 									abortWait = true
@@ -496,25 +694,40 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 						if holdLockMap[lineSplit[1]] == 0 {
 
 							holdLockMap[lineSplit[1]] = 1
+
 							lockMapMutex.Lock()
 							lockMap[lineSplit[1]][1] += 1
+							lockMapMutex.Unlock()
 
 							readLockHolderMNapMutex.RLock()
 							_, ok := readLockHolderMNap[lineSplit[1]]
 							readLockHolderMNapMutex.RUnlock()
+
 							readLockHolderMNapMutex.Lock()
 							if ! ok {
 								readLockHolderMNap[lineSplit[1]] = map[string]bool{}
 							}
 							readLockHolderMNap[lineSplit[1]][transactionID] = true
 							readLockHolderMNapMutex.Unlock()
-							lockMapMutex.Unlock()
+
 						}
 
 						break
 					}
 
 					if(breakLoop) {
+						//row clear
+						for col := 0; col < MAXCLIENT; col++ {
+							adjaenctMapMutex.Lock()
+							adjaencyMap[remoteIpindex][col] = false
+							adjaenctMapMutex.Unlock()
+						}
+						//col clear
+						for row := 0; row < MAXCLIENT; row ++ {
+							adjaenctMapMutex.Lock()
+							adjaencyMap[row][remoteIpindex] = false
+							adjaenctMapMutex.Unlock()
+						}
 						break
 					}
 
@@ -599,6 +812,18 @@ func main(){
 		commitChans[i] = make(chan bool)
 		setChans[i] = make(chan string)
 		getChans[i] = make(chan string)
+	}
+
+	MAXCLIENT = 10
+	adjaencyMap = make(map[int]map[int]bool)
+	for i:= 0; i < MAXCLIENT; i++ {
+		adjaencyMap[i] = make(map[int]bool)
+	}
+
+	for row := 0; row < MAXCLIENT; row ++ {
+		for col := 0; col < MAXCLIENT; col ++ {
+			adjaencyMap[row][col] = false
+		}
 	}
 
 	ip2ChannelIndexMap = make(map[string]int)

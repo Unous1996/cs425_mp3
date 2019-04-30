@@ -68,7 +68,11 @@ func readMessage(conn *net.TCPConn){
 			if(lineSplit[0] == "SET") {
 				object := strings.Split(lineSplit[1],".")[1]
 				balanceMutex.Lock()
-				balance[object] = lineSplit[2]
+				if len(lineSplit) >= 3 {
+					balance[object] = lineSplit[2]
+				} else {
+					balance[object] = "0"
+				}
 				balanceMutex.Unlock()
 				continue
 			}
