@@ -110,7 +110,6 @@ func startServer() {
 
 	for {
 		conn, _ := tcpListen.AcceptTCP()
-		fmt.Println("Accepted TCP From", conn.RemoteAddr().String())
 		defer conn.Close()
 		go readMessage(conn)
 	}
