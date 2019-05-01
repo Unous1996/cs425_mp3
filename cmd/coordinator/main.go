@@ -236,9 +236,7 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 		count += 1
 		transactionID := transactionPrefix + "_" + strconv.Itoa(count)
 		fmt.Println("#Start a transaction whose ID is", transactionID)
-		newestTransactionMutex.Lock()
-		newestTransaction = transactionID
-		newestTransactionMutex.Unlock()
+
 		conn.Write([]byte("OK"))
 
 		updateMap := make(map[string]string)
@@ -396,6 +394,10 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 								break
 							} else {
 
+								newestTransactionMutex.Lock()
+								newestTransaction = transactionID
+								newestTransactionMutex.Unlock()
+
 								ip2ChannelINdexMapMutex.RLock()
 								writeLockHolderMNapMutex.RLock()
 								writeLockHolderIndex := ip2ChannelIndexMap[strings.Split(writeLockHolderMNap[lineSplit[1]],":")[0]]
@@ -503,7 +505,9 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 								conn.Write([]byte("OK"))
 								break
 							} else {
-
+								newestTransactionMutex.Lock()
+								newestTransaction = transactionID
+								newestTransactionMutex.Unlock()
 								hasDeadlock := false
 								readLockHolderMNapMutex.RLock()
 								for readLockHolderId, _ := range readLockHolderMNap[lineSplit[1]]{
@@ -596,12 +600,10 @@ func handleTransaction(conn net.Conn, remoteIpindex int, transactionPrefix strin
 						lockMapMutex.RUnlock()
 
 						if WLock == 1 && holdLockMap[lineSplit[1]] != 2 {
-							/*
-							nodeMapMutex.Lock()
-							nodeMap[transactionID].neighbors = append(nodeMap[transactionID].neighbors, writeLockHolderMNap[transactionID])
-							nodeMapMutex.Unlock()
-							nodeMapMutex.RLock()
-							*/
+
+							newestTransactionMutex.Lock()
+							newestTransaction = transactionID
+							newestTransactionMutex.Unlock()
 
 							ip2ChannelINdexMapMutex.RLock()
 							writeLockHolderMNapMutex.RLock()
@@ -800,6 +802,7 @@ func main(){
 	}
 
 	MAXCLIENT = 10
+	newestTransaction = ""
 	adjaencyMap = make(map[int]map[int]bool)
 	for i:= 0; i < MAXCLIENT; i++ {
 		adjaencyMap[i] = make(map[int]bool)
